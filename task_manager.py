@@ -83,13 +83,25 @@ def add_task(
 
     tasks = load_tasks()
 
-    title = validate_title(title)
+    valid_title, title = validate_title(title)
+    if not valid_title:
+        raise ValueError(title)
 
-    description = validate_description(description)
+    valid_description, description = validate_description(description)
+    if not valid_description:
+        raise ValueError(description)
 
-    due_date = validate_due_date(due_date)
+    valid_due_date, due_date = validate_due_date(due_date)
+    if not valid_due_date:
+        raise ValueError(due_date)
 
-    priority = validate_priority(priority)
+    valid_priority, priority = validate_priority(priority)
+    if not valid_priority:
+        raise ValueError(priority)
+
+    existing_titles = {task.title.lower() for task in tasks if task.user_id == user_id}
+    if title.lower() in existing_titles:
+        raise ValueError("A task with this title already exists.")
 
     task = Task(
 
@@ -181,13 +193,21 @@ def update_task(
 
     tasks = load_tasks()
 
-    title = validate_title(title)
+    valid_title, title = validate_title(title)
+    if not valid_title:
+        return False
 
-    description = validate_description(description)
+    valid_description, description = validate_description(description)
+    if not valid_description:
+        return False
 
-    due_date = validate_due_date(due_date)
+    valid_due_date, due_date = validate_due_date(due_date)
+    if not valid_due_date:
+        return False
 
-    priority = validate_priority(priority)
+    valid_priority, priority = validate_priority(priority)
+    if not valid_priority:
+        return False
 
     for task in tasks:
 
@@ -455,6 +475,29 @@ def get_statistics(user_id):
         "medium_priority": medium,
         "low_priority": low,
         "completion_rate": completion_rate
+    }
+
+
+def get_overdue_tasks(user_id):
+    today = datetime.today().date()
+    tasks = get_all_tasks(user_id)
+    overdue = []
+    for task in tasks:
+        if task.status != "Completed":
+            due_date = datetime.strptime(task.due_date, "%Y-%m-%d").date()
+            if due_date < today:
+                overdue.append(task)
+    return overdue
+
+
+def get_task_summary(user_id):
+    tasks = get_all_tasks(user_id)
+    overdue = get_overdue_tasks(user_id)
+    return {
+        "total": len(tasks),
+        "completed": sum(1 for task in tasks if task.status == "Completed"),
+        "pending": sum(1 for task in tasks if task.status != "Completed"),
+        "overdue": len(overdue),
     }
 
 

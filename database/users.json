@@ -1,1 +1,20 @@
-[]
+[
+    {
+        "user_id": 1,
+        "username": "Lavanya",
+        "email": "lav@gmail.com",
+        "password": "91bb69ff58ec2659cc28593bdbc7b8e5f53698ded64af3c9a17f36b3903996df"
+    },
+    {
+        "user_id": 2,
+        "username": "Himani",
+        "email": "himani@gmail.com",
+        "password": "4f78320ad764c744e387077a75dc8971f3eccf747c4bef51973887efefd549d9"
+    },
+    {
+        "user_id": 3,
+        "username": "john doe",
+        "email": "johnny@gmail.com",
+        "password": "92194f12df7688bace2f0b33c3702ab33cc1f82547845de055b8b3aba9dd164c"
+    }
+]
