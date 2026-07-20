@@ -16,5 +16,11 @@
         "username": "john doe",
         "email": "johnny@gmail.com",
         "password": "92194f12df7688bace2f0b33c3702ab33cc1f82547845de055b8b3aba9dd164c"
+    },
+    {
+        "user_id": 4,
+        "username": "Anna",
+        "email": "anna@gmail.com",
+        "password": "d89d1ec86fb76221e7f370ed53d0396fb1d8f56fae2a2419efd0b0decb041f53"
     }
 ]

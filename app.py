@@ -43,15 +43,38 @@ def show_dashboard(user):
 current_user = None
 
 
+def validate_current_user(user):
+    if not user:
+        return False
+
+    saved_session = load_session()
+    if not saved_session or saved_session.get("user_id") != user.get("user_id"):
+        return False
+
+    return True
+
+
 def task_menu():
     global current_user
     if not current_user:
         print("Please log in first.")
         return
 
+    if not validate_current_user(current_user):
+        print("Your session is invalid or has been cleared. Please log in again.")
+        current_user = None
+        clear_session()
+        return
+
     show_dashboard(current_user)
 
     while True:
+        if not validate_current_user(current_user):
+            print("Your session is invalid or has been cleared. Please log in again.")
+            current_user = None
+            clear_session()
+            return
+
         print("\n===== TASK MENU =====")
         print("1. View tasks")
         print("2. Add task")
@@ -91,30 +114,39 @@ def task_menu():
             description = input("New description: ").strip()
             due_date = input("New due date (YYYY-MM-DD): ").strip()
             priority = input("New priority (High/Medium/Low): ").strip()
-            if update_task(current_user["user_id"], task_id, title, description, due_date, priority):
-                print("Task updated.")
-            else:
-                print("Task not found.")
+            try:
+                if update_task(current_user["user_id"], task_id, title, description, due_date, priority):
+                    print("Task updated.")
+                else:
+                    print("Task not found.")
+            except Exception as exc:
+                print(f"Error updating task: {exc}")
         elif choice == "4":
             try:
                 task_id = int(input("Task ID: ").strip())
             except ValueError:
                 print("Please enter a valid task ID.")
                 continue
-            if delete_task(current_user["user_id"], task_id):
-                print("Task deleted.")
-            else:
-                print("Task not found.")
+            try:
+                if delete_task(current_user["user_id"], task_id):
+                    print("Task deleted.")
+                else:
+                    print("Task not found.")
+            except Exception as exc:
+                print(f"Error deleting task: {exc}")
         elif choice == "5":
             try:
                 task_id = int(input("Task ID: ").strip())
             except ValueError:
                 print("Please enter a valid task ID.")
                 continue
-            if mark_completed(current_user["user_id"], task_id):
-                print("Task marked complete.")
-            else:
-                print("Task not found.")
+            try:
+                if mark_completed(current_user["user_id"], task_id):
+                    print("Task marked complete.")
+                else:
+                    print("Task not found.")
+            except Exception as exc:
+                print(f"Error marking task complete: {exc}")
         elif choice == "6":
             keyword = input("Search keyword: ").strip()
             display_tasks(search_tasks(current_user["user_id"], keyword))
@@ -137,7 +169,13 @@ def task_menu():
             print("Invalid option.")
 
 
-saved_session = load_session()
+saved_session = None
+try:
+    saved_session = load_session()
+except Exception as exc:
+    print("Warning: Could not restore session from storage.")
+    print(f"Reason: {exc}")
+
 if saved_session:
     current_user = saved_session
     print(f"Welcome back, {current_user['username']}!")
@@ -158,7 +196,11 @@ while True:
     elif choice == "2":
         current_user = login()
         if current_user:
-            save_session(current_user)
+            try:
+                save_session(current_user)
+            except Exception as exc:
+                print("Warning: failed to persist login session.")
+                print(f"Reason: {exc}")
             show_dashboard(current_user)
     elif choice == "3":
         current_user = logout()

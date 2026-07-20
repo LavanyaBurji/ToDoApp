@@ -23,6 +23,7 @@ from task_manager import (
     get_statistics,
     get_task_summary,
     get_overdue_tasks,
+    restore_tasks_from_backup,
 )
 
 app = Flask(__name__)
@@ -36,6 +37,25 @@ def sort_tasks(tasks, sort_key):
     if sort_key == "priority":
         return sorted(tasks, key=lambda task: priority_order.get(task.priority, 4))
     return tasks
+
+
+def get_validated_user():
+    if "user" not in session:
+        return None
+
+    saved_session = None
+    try:
+        saved_session = load_session()
+    except Exception as exc:
+        app.logger.error("Unable to load persisted session: %s", exc)
+
+    current_user = session.get("user")
+    if not saved_session or saved_session.get("user_id") != current_user.get("user_id"):
+        session.pop("user", None)
+        clear_session()
+        return None
+
+    return current_user
 
 
 @app.route("/")
@@ -110,6 +130,28 @@ def login_view():
     return render_template("login.html")
 
 
+@app.before_request
+def enforce_session_consistency():
+    if request.endpoint in ("login_view", "register_view", "static"):
+        return
+
+    if request.endpoint == "logout_view":
+        return
+
+    if "user" in session:
+        valid_user = get_validated_user()
+        if valid_user is None:
+            flash("Your session is no longer valid. Please log in again.", "warning")
+            return redirect(url_for("login_view"))
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(error):
+    app.logger.error("Unhandled exception: %s", error, exc_info=True)
+    flash("Something went wrong. Please try again later.", "danger")
+    return render_template("error.html", error=str(error)), 500
+
+
 @app.route("/register", methods=["GET", "POST"])
 def register_view():
     if request.method == "POST":
@@ -140,7 +182,9 @@ def add_task_view():
     if "user" not in session:
         return redirect(url_for("login_view"))
 
-    user = session["user"]
+    user = get_validated_user()
+    if user is None:
+        return redirect(url_for("login_view"))
 
     form_data = {
         "title": "",
@@ -176,7 +220,9 @@ def edit_task_view(task_id):
     if "user" not in session:
         return redirect(url_for("login_view"))
 
-    user = session["user"]
+    user = get_validated_user()
+    if user is None:
+        return redirect(url_for("login_view"))
     task = get_task_by_id(user["user_id"], task_id)
     if not task:
         flash("Task not found.", "danger")
@@ -212,11 +258,30 @@ def delete_task_view(task_id):
     if "user" not in session:
         return redirect(url_for("login_view"))
 
-    user = session["user"]
+    user = get_validated_user()
+    if user is None:
+        return redirect(url_for("login_view"))
     if delete_task(user["user_id"], task_id):
         flash("Task deleted.", "success")
     else:
         flash("Task not found.", "danger")
+
+    return redirect(url_for("index"))
+
+
+@app.route("/tasks/restore")
+def restore_tasks_view():
+    if "user" not in session:
+        return redirect(url_for("login_view"))
+
+    user = get_validated_user()
+    if user is None:
+        return redirect(url_for("login_view"))
+
+    if restore_tasks_from_backup():
+        flash("Tasks restored from the most recent backup.", "success")
+    else:
+        flash("No task backup was available to restore.", "warning")
 
     return redirect(url_for("index"))
 
@@ -226,7 +291,9 @@ def complete_task_view(task_id):
     if "user" not in session:
         return redirect(url_for("login_view"))
 
-    user = session["user"]
+    user = get_validated_user()
+    if user is None:
+        return redirect(url_for("login_view"))
     if mark_completed(user["user_id"], task_id):
         flash("Task marked complete.", "success")
     else:
