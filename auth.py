@@ -51,16 +51,7 @@ def register():
 
         print(message)
 
-    new_user = {
-        "user_id": generate_user_id(users),
-        "username": username,
-        "email": email,
-        "password": hash_password(password)
-    }
-
-    users.append(new_user)
-    save_users(users)
-
+    register_user(username, email, password)
     print("Registration successful.")
 
 
@@ -79,17 +70,60 @@ def login():
         print("Password cannot be empty.")
         return None
 
+    return login_user(username, password)
+
+
+def register_user(username, email, password):
+    users = load_users()
+
+    valid, message = validate_username(username)
+    if not valid:
+        raise ValueError(message)
+
     for user in users:
         if user["username"].lower() == username.lower():
+            raise ValueError("Username already exists.")
 
+    valid, message = validate_email(email)
+    if not valid:
+        raise ValueError(message)
+
+    for user in users:
+        if user["email"].lower() == email.lower():
+            raise ValueError("Email already registered.")
+
+    valid, message = validate_password(password)
+    if not valid:
+        raise ValueError(message)
+
+    new_user = {
+        "user_id": generate_user_id(users),
+        "username": username,
+        "email": email,
+        "password": hash_password(password)
+    }
+
+    users.append(new_user)
+    save_users(users)
+    return new_user
+
+
+def login_user(username, password):
+    users = load_users()
+
+    if username == "":
+        return None
+
+    if password == "":
+        return None
+
+    for user in users:
+        if user["username"].lower() == username.lower():
             if verify_password(password, user["password"]):
                 print(f"Login successful. Welcome, {user['username']}!")
                 return user
-
-            print("Incorrect password.")
             return None
 
-    print("User not found.")
     return None
 
 

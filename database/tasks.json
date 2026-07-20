@@ -1,19 +1,10 @@
 [
     {
-        "task_id": 1,
-        "user_id": 2,
-        "title": "clean house",
-        "description": "vacuum",
-        "due_date": "2026-05-01",
-        "priority": "High",
-        "status": "Completed"
-    },
-    {
         "task_id": 2,
         "user_id": 2,
         "title": "buy oranges",
         "description": "go grocery shop",
-        "due_date": "2026-09-05",
+        "due_date": "2026-09-11",
         "priority": "Low",
         "status": "Completed"
     },
@@ -33,6 +24,15 @@
         "description": "acrylic",
         "due_date": "2026-07-16",
         "priority": "High",
+        "status": "Pending"
+    },
+    {
+        "task_id": 5,
+        "user_id": 2,
+        "title": "Shopping",
+        "description": "Buy clothes",
+        "due_date": "2026-07-17",
+        "priority": "Medium",
         "status": "Pending"
     }
 ]
