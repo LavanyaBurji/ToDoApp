@@ -1,1 +1,38 @@
-[]
+[
+    {
+        "task_id": 2,
+        "user_id": 2,
+        "title": "buy oranges",
+        "description": "go grocery shop",
+        "due_date": "2026-09-11",
+        "priority": "Low",
+        "status": "Completed"
+    },
+    {
+        "task_id": 3,
+        "user_id": 1,
+        "title": "zara",
+        "description": "Makeup",
+        "due_date": "2026-04-05",
+        "priority": "Medium",
+        "status": "Pending"
+    },
+    {
+        "task_id": 4,
+        "user_id": 2,
+        "title": "nail appt",
+        "description": "acrylic",
+        "due_date": "2026-07-16",
+        "priority": "High",
+        "status": "Pending"
+    },
+    {
+        "task_id": 5,
+        "user_id": 2,
+        "title": "Shopping",
+        "description": "Buy clothes",
+        "due_date": "2026-07-17",
+        "priority": "Medium",
+        "status": "Pending"
+    }
+]

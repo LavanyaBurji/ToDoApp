@@ -1,0 +1,17 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+.env
+
+# Pytest cache
+.pytest_cache/
+
+# Session data and runtime files
+database/session.json
+
+# System files
+.DS_Store
+Thumbs.db
