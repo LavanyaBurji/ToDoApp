@@ -1,7 +1,12 @@
 import json
+import logging
 import os
+import shutil
+import tempfile
+import time
 from datetime import datetime
 
+from config import TASKS_FILE
 from models import Task
 from utils import (
     validate_title,
@@ -10,7 +15,155 @@ from utils import (
     validate_priority,
 )
 
-TASK_FILE = os.path.join("database", "tasks.json")
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+
+# =====================================================
+# STORAGE HELPERS
+# =====================================================
+
+def _ensure_database_dir():
+    os.makedirs(os.path.dirname(TASKS_FILE), exist_ok=True)
+
+
+def _backup_file(path, keep=5):
+    if not os.path.exists(path):
+        return
+
+    directory = os.path.dirname(path)
+    base = os.path.basename(path)
+    timestamp = time.strftime("%Y%m%d%H%M%S")
+    backup_path = os.path.join(directory, f"{base}.{timestamp}.bak")
+    shutil.copy2(path, backup_path)
+
+    backups = sorted(
+        [
+            os.path.join(directory, f)
+            for f in os.listdir(directory)
+            if f.startswith(base + ".") and f.endswith(".bak")
+        ],
+        reverse=True,
+    )
+    for old_backup in backups[keep:]:
+        try:
+            os.remove(old_backup)
+        except OSError:
+            pass
+
+
+def _restore_from_backup(path):
+    directory = os.path.dirname(path)
+    base = os.path.basename(path)
+    candidates = sorted(
+        [
+            os.path.join(directory, f)
+            for f in os.listdir(directory)
+            if f.startswith(base + ".") and f.endswith(".bak")
+        ],
+        reverse=True,
+    )
+    if not candidates:
+        return False
+
+    for backup_path in candidates:
+        try:
+            shutil.copy2(backup_path, path)
+            logger.info("Restored %s from backup %s", path, backup_path)
+            return True
+        except OSError as exc:
+            logger.error("Failed to restore %s from backup %s: %s", path, backup_path, exc)
+            continue
+    return False
+
+
+def _find_latest_backup(path):
+    directory = os.path.dirname(path)
+    base = os.path.basename(path)
+    backups = sorted(
+        [
+            os.path.join(directory, f)
+            for f in os.listdir(directory)
+            if f.startswith(base + ".") and f.endswith(".bak")
+        ],
+        reverse=True,
+    )
+    return backups[0] if backups else None
+
+
+def restore_tasks_from_backup():
+    return _restore_from_backup(TASKS_FILE)
+
+
+def restore_deleted_task(user_id, task_id):
+    current_tasks = load_tasks()
+    if any(task.task_id == task_id and task.user_id == user_id for task in current_tasks):
+        return True
+
+    backup_path = _find_latest_backup(TASKS_FILE)
+    if not backup_path:
+        return False
+
+    try:
+        with open(backup_path, "r", encoding="utf-8") as file:
+            backup_tasks = [Task.from_dict(task) for task in json.load(file)]
+    except (OSError, json.JSONDecodeError):
+        return False
+
+    if not any(task.task_id == task_id and task.user_id == user_id for task in backup_tasks):
+        return False
+
+    return _restore_from_backup(TASKS_FILE)
+
+
+def _atomic_write(path, data):
+    _ensure_database_dir()
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", delete=False, dir=directory, encoding="utf-8") as tmp:
+        json.dump(data, tmp, indent=4)
+        tmp.flush()
+        os.fsync(tmp.fileno())
+        temp_path = tmp.name
+    os.replace(temp_path, path)
+
+
+def _handle_corrupt_file(path):
+    try:
+        corrupt_path = f"{path}.corrupt"
+        if os.path.exists(corrupt_path):
+            os.remove(corrupt_path)
+        os.replace(path, corrupt_path)
+        logger.warning("Backed up corrupt JSON file to %s", corrupt_path)
+    except OSError as exc:
+        logger.error("Unable to backup corrupt JSON file %s: %s", path, exc)
+
+
+def _read_json(path, default):
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except FileNotFoundError:
+        if _restore_from_backup(path):
+            try:
+                with open(path, "r", encoding="utf-8") as file:
+                    return json.load(file)
+            except Exception:
+                return default
+        return default
+    except json.JSONDecodeError:
+        logger.warning("JSON decode failed for %s", path)
+        _handle_corrupt_file(path)
+        if _restore_from_backup(path):
+            try:
+                with open(path, "r", encoding="utf-8") as file:
+                    return json.load(file)
+            except Exception:
+                return default
+        return default
+    except OSError as exc:
+        logger.error("Unable to read %s: %s", path, exc)
+        return default
 
 
 # =====================================================
@@ -23,20 +176,8 @@ def load_tasks():
     Returns a list of Task objects.
     """
 
-    try:
-
-        with open(TASK_FILE, "r") as file:
-
-            data = json.load(file)
-
-            return [
-                Task.from_dict(task)
-                for task in data
-            ]
-
-    except (FileNotFoundError, json.JSONDecodeError):
-
-        return []
+    tasks_data = _read_json(TASKS_FILE, [])
+    return [Task.from_dict(task) for task in tasks_data]
 
 
 def save_tasks(tasks):
@@ -44,17 +185,11 @@ def save_tasks(tasks):
     Saves Task objects to JSON.
     """
 
-    with open(TASK_FILE, "w") as file:
-
-        json.dump(
-
-            [task.to_dict() for task in tasks],
-
-            file,
-
-            indent=4
-
-        )
+    _backup_file(TASKS_FILE)
+    _atomic_write(
+        TASKS_FILE,
+        [task.to_dict() for task in tasks],
+    )
 
 
 # =====================================================
@@ -83,13 +218,25 @@ def add_task(
 
     tasks = load_tasks()
 
-    title = validate_title(title)
+    valid_title, title = validate_title(title)
+    if not valid_title:
+        raise ValueError(title)
 
-    description = validate_description(description)
+    valid_description, description = validate_description(description)
+    if not valid_description:
+        raise ValueError(description)
 
-    due_date = validate_due_date(due_date)
+    valid_due_date, due_date = validate_due_date(due_date)
+    if not valid_due_date:
+        raise ValueError(due_date)
 
-    priority = validate_priority(priority)
+    valid_priority, priority = validate_priority(priority)
+    if not valid_priority:
+        raise ValueError(priority)
+
+    existing_titles = {task.title.lower() for task in tasks if task.user_id == user_id}
+    if title.lower() in existing_titles:
+        raise ValueError("A task with this title already exists.")
 
     task = Task(
 
@@ -181,13 +328,21 @@ def update_task(
 
     tasks = load_tasks()
 
-    title = validate_title(title)
+    valid_title, title = validate_title(title)
+    if not valid_title:
+        return False
 
-    description = validate_description(description)
+    valid_description, description = validate_description(description)
+    if not valid_description:
+        return False
 
-    due_date = validate_due_date(due_date)
+    valid_due_date, due_date = validate_due_date(due_date)
+    if not valid_due_date:
+        return False
 
-    priority = validate_priority(priority)
+    valid_priority, priority = validate_priority(priority)
+    if not valid_priority:
+        return False
 
     for task in tasks:
 
@@ -455,6 +610,29 @@ def get_statistics(user_id):
         "medium_priority": medium,
         "low_priority": low,
         "completion_rate": completion_rate
+    }
+
+
+def get_overdue_tasks(user_id):
+    today = datetime.today().date()
+    tasks = get_all_tasks(user_id)
+    overdue = []
+    for task in tasks:
+        if task.status != "Completed":
+            due_date = datetime.strptime(task.due_date, "%Y-%m-%d").date()
+            if due_date < today:
+                overdue.append(task)
+    return overdue
+
+
+def get_task_summary(user_id):
+    tasks = get_all_tasks(user_id)
+    overdue = get_overdue_tasks(user_id)
+    return {
+        "total": len(tasks),
+        "completed": sum(1 for task in tasks if task.status == "Completed"),
+        "pending": sum(1 for task in tasks if task.status != "Completed"),
+        "overdue": len(overdue),
     }
 
 
