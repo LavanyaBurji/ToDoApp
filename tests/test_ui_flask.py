@@ -8,7 +8,9 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
 import storage
-from ui.app import app
+from ui import app as ui_app
+
+app = ui_app.app
 
 
 @pytest.fixture
@@ -40,3 +42,30 @@ def test_session_file_missing_redirects_to_login(client, monkeypatch, tmp_path):
     response = client.get("/")
     assert response.status_code == 302
     assert "/login" in response.headers["Location"]
+
+
+def test_login_attempts_are_rate_limited(client, monkeypatch):
+    monkeypatch.setattr(ui_app, "login_user", lambda *args, **kwargs: None)
+    app.config["LOGIN_ATTEMPT_LIMIT"] = 2
+    app.config["LOGIN_ATTEMPT_WINDOW_SECONDS"] = 60
+    ui_app.LOGIN_ATTEMPT_TRACKERS.clear()
+
+    first = client.post(
+        "/login",
+        data={"username": "demo", "password": "wrong"},
+        follow_redirects=True,
+    )
+    second = client.post(
+        "/login",
+        data={"username": "demo", "password": "wrong"},
+        follow_redirects=True,
+    )
+    third = client.post(
+        "/login",
+        data={"username": "demo", "password": "wrong"},
+        follow_redirects=True,
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert third.status_code == 429

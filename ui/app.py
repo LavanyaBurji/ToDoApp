@@ -2,6 +2,8 @@ import sys
 from datetime import datetime
 from flask import Flask, redirect, render_template, request, session, url_for, flash
 from pathlib import Path
+from collections import defaultdict
+import time
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE_DIR))
@@ -28,6 +30,9 @@ from task_manager import (
 
 app = Flask(__name__)
 app.secret_key = "change-this-secret"
+app.config["LOGIN_ATTEMPT_LIMIT"] = 5
+app.config["LOGIN_ATTEMPT_WINDOW_SECONDS"] = 300
+LOGIN_ATTEMPT_TRACKERS = defaultdict(list)
 
 
 def sort_tasks(tasks, sort_key):
@@ -113,11 +118,35 @@ def index():
     )
 
 
+def _get_client_identifier():
+    return request.headers.get("X-Forwarded-For", request.remote_addr or "unknown").split(",")[0].strip()
+
+
+def _is_rate_limited():
+    identifier = _get_client_identifier()
+    now = time.time()
+    window = app.config["LOGIN_ATTEMPT_WINDOW_SECONDS"]
+    limit = app.config["LOGIN_ATTEMPT_LIMIT"]
+
+    attempts = LOGIN_ATTEMPT_TRACKERS[identifier]
+    attempts[:] = [attempt for attempt in attempts if now - attempt <= window]
+
+    if len(attempts) >= limit:
+        return True
+
+    attempts.append(now)
+    return False
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login_view():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "").strip()
+
+        if _is_rate_limited():
+            flash("Too many login attempts. Please try again later.", "warning")
+            return render_template("login.html"), 429
 
         user = login_user(username, password)
         if user:
